@@ -136,6 +136,23 @@ def format_due(task: dict) -> Text:
     return Text(due)
 
 
+def format_status(task: dict) -> Text:
+    """Render a task's completion status with colour, flagging overdue tasks.
+
+    Args:
+        task: A task dictionary.
+
+    Returns:
+        A Rich Text object: "Overdue" (bold red) if applicable, otherwise
+        "✓ Done" (green) or "Pending" (yellow).
+    """
+    if is_overdue(task):
+        return Text("Overdue", style="bold red")
+    if task.get("done"):
+        return Text("✓ Done", style="green")
+    return Text("Pending", style="yellow")
+
+
 def find_task(tasks: list[dict], task_id: int) -> dict | None:
     """Find a task by its integer ID.
 
@@ -351,11 +368,7 @@ def list_tasks(status: str, priority: str | None, tag: str | None, overdue: bool
         priority_text = Text(prio, style=prio_colour)
 
         tags_text = Text(", ".join(task.get("tags", [])) or "—", style="dim")
-        status_text = (
-            Text("✓ Done", style="green") if task.get("done") else Text("Pending", style="yellow")
-        )
-        if is_overdue(task):
-            status_text = Text("Overdue", style="bold red")
+        status_text = format_status(task)
 
         table.add_row(
             str(task["id"]),
@@ -575,11 +588,7 @@ def search(keyword: str) -> None:
 
         description_text = highlight_keyword(str(task.get("description") or ""), keyword)
 
-        status_text = (
-            Text("✓ Done", style="green") if task.get("done") else Text("Pending", style="yellow")
-        )
-        if is_overdue(task):
-            status_text = Text("Overdue", style="bold red")
+        status_text = format_status(task)
 
         table.add_row(
             str(task["id"]),

@@ -13,6 +13,7 @@ from app import (
     complete,
     delete,
     edit,
+    format_status,
     highlight_keyword,
     is_overdue,
     list_tasks,
@@ -83,6 +84,22 @@ class TestIsOverdue:
     def test_invalid_due_date_is_not_overdue(self) -> None:
         task = {"done": False, "due_date": "not-a-date"}
         assert is_overdue(task) is False
+
+
+class TestFormatStatus:
+    def test_pending_task(self) -> None:
+        task = {"done": False, "due_date": None}
+        assert format_status(task).plain == "Pending"
+
+    def test_done_task(self) -> None:
+        task = {"done": True, "due_date": None}
+        assert format_status(task).plain == "✓ Done"
+
+    def test_overdue_task_takes_priority_over_pending(self) -> None:
+        task = {"done": False, "due_date": "2000-01-01"}
+        result = format_status(task)
+        assert result.plain == "Overdue"
+        assert result.style == "bold red"
 
 
 # ---------------------------------------------------------------------------

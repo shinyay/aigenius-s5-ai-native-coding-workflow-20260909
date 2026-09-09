@@ -142,7 +142,7 @@ Exercise 01 includes Azure-based Options A and B. Choose Option C or D for a cor
       ├── requirements.txt             # click, rich, pytest
       └── tests/
           ├── conftest.py              # Shared fixtures (isolated task file)
-          └── test_tasks.py            # 60 tests covering all commands + edge cases
+          └── test_tasks.py            # 63 tests covering all commands + edge cases
 ```
 
 ---
