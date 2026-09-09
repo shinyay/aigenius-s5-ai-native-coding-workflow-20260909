@@ -7,7 +7,21 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from app import add, cli, complete, delete, edit, is_overdue, list_tasks, load_tasks, save_tasks, stats
+from app import (
+    add,
+    cli,
+    complete,
+    delete,
+    edit,
+    highlight_keyword,
+    is_overdue,
+    list_tasks,
+    load_tasks,
+    save_tasks,
+    search_sort_key,
+    stats,
+    task_matches_keyword,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -262,3 +276,171 @@ class TestStatsCommand:
         result = runner.invoke(cli, ["stats"])
         assert result.exit_code == 0
         assert "3" in result.output  # total
+
+
+# ---------------------------------------------------------------------------
+# Search helpers
+# ---------------------------------------------------------------------------
+
+
+class TestTaskMatchesKeyword:
+    def test_matches_name_case_insensitively(self) -> None:
+        task = {"name": "Deploy to Production", "description": ""}
+        assert task_matches_keyword(task, "deploy") is True
+
+    def test_matches_description_only(self) -> None:
+        task = {"name": "Chore", "description": "Run the release pipeline"}
+        assert task_matches_keyword(task, "release") is True
+
+    def test_no_match_returns_false(self) -> None:
+        task = {"name": "Buy groceries", "description": ""}
+        assert task_matches_keyword(task, "deploy") is False
+
+    def test_missing_description_key_is_safe(self) -> None:
+        task = {"name": "Buy groceries"}
+        assert task_matches_keyword(task, "groceries") is True
+
+    def test_none_description_is_safe(self) -> None:
+        task = {"name": "Buy groceries", "description": None}
+        assert task_matches_keyword(task, "groceries") is True
+
+
+class TestSearchSortKey:
+    def test_orders_by_priority_then_id(self) -> None:
+        tasks = [
+            {"id": 3, "priority": "low"},
+            {"id": 1, "priority": "high"},
+            {"id": 2, "priority": "medium"},
+            {"id": 4, "priority": "high"},
+        ]
+        ordered = sorted(tasks, key=search_sort_key)
+        assert [t["id"] for t in ordered] == [1, 4, 2, 3]
+
+
+class TestHighlightKeyword:
+    def test_highlights_single_match(self) -> None:
+        result = highlight_keyword("Deploy to production", "deploy")
+        assert result.plain == "Deploy to production"
+        spans = [s for s in result.spans if s.style == "bold yellow"]
+        assert len(spans) == 1
+        assert (spans[0].start, spans[0].end) == (0, 6)
+
+    def test_highlights_multiple_matches_case_insensitively(self) -> None:
+        result = highlight_keyword("Deploy the deployment DEPLOY", "deploy")
+        spans = [s for s in result.spans if s.style == "bold yellow"]
+        assert len(spans) == 3
+
+    def test_no_keyword_returns_plain_text_unchanged(self) -> None:
+        result = highlight_keyword("Some text", "")
+        assert result.plain == "Some text"
+        assert not any(s.style == "bold yellow" for s in result.spans)
+
+    def test_empty_text_returns_em_dash(self) -> None:
+        result = highlight_keyword("", "deploy")
+        assert result.plain == "—"
+
+
+# ---------------------------------------------------------------------------
+# CLI commands via CliRunner (continued)
+# ---------------------------------------------------------------------------
+
+
+class TestSearchCommand:
+    def test_search_matches_name(self, runner: CliRunner, sample_tasks: list[dict]) -> None:
+        result = runner.invoke(cli, ["search", "deploy"])
+        assert result.exit_code == 0
+        assert "Deploy to production" in result.output
+        assert "Buy groceries" not in result.output
+
+    def test_search_matches_description(self, runner: CliRunner, sample_tasks: list[dict]) -> None:
+        result = runner.invoke(cli, ["search", "release pipeline"])
+        assert result.exit_code == 0
+        assert "Deploy to production" in result.output
+
+    def test_search_is_case_insensitive(self, runner: CliRunner, sample_tasks: list[dict]) -> None:
+        result = runner.invoke(cli, ["search", "DEPLOY"])
+        assert result.exit_code == 0
+        assert "Deploy to production" in result.output
+
+    def test_search_includes_pending_and_done_tasks(
+        self, runner: CliRunner, sample_tasks: list[dict]
+    ) -> None:
+        result = runner.invoke(cli, ["search", "tests"])
+        # "Write unit tests" (done) matches; ensure status column reflects it
+        assert result.exit_code == 0
+        assert "Done" in result.output
+
+    def test_search_orders_by_priority_then_id(
+        self, runner: CliRunner, isolated_tasks_file: Path
+    ) -> None:
+        tasks = [
+            {
+                "id": 1,
+                "name": "alpha task low",
+                "description": "",
+                "priority": "low",
+                "tags": [],
+                "due_date": None,
+                "done": False,
+                "created_at": "2025-01-01T09:00:00",
+            },
+            {
+                "id": 2,
+                "name": "alpha task high",
+                "description": "",
+                "priority": "high",
+                "tags": [],
+                "due_date": None,
+                "done": False,
+                "created_at": "2025-01-01T09:00:00",
+            },
+            {
+                "id": 3,
+                "name": "alpha task medium",
+                "description": "",
+                "priority": "medium",
+                "tags": [],
+                "due_date": None,
+                "done": False,
+                "created_at": "2025-01-01T09:00:00",
+            },
+        ]
+        isolated_tasks_file.write_text(json.dumps(tasks), encoding="utf-8")
+        result = runner.invoke(cli, ["search", "alpha"])
+        assert result.exit_code == 0
+        pos_high = result.output.index("alpha task high")
+        pos_medium = result.output.index("alpha task medium")
+        pos_low = result.output.index("alpha task low")
+        assert pos_high < pos_medium < pos_low
+
+    def test_search_no_match_message(self, runner: CliRunner, sample_tasks: list[dict]) -> None:
+        result = runner.invoke(cli, ["search", "nonexistent-keyword"])
+        assert result.exit_code == 0
+        assert "No tasks match your search." in result.output
+
+    def test_search_empty_keyword_fails(self, runner: CliRunner, sample_tasks: list[dict]) -> None:
+        result = runner.invoke(cli, ["search", ""])
+        assert result.exit_code != 0
+
+    def test_search_whitespace_keyword_fails(self, runner: CliRunner, sample_tasks: list[dict]) -> None:
+        result = runner.invoke(cli, ["search", "   "])
+        assert result.exit_code != 0
+
+    def test_search_handles_missing_description(
+        self, runner: CliRunner, isolated_tasks_file: Path
+    ) -> None:
+        tasks = [
+            {
+                "id": 1,
+                "name": "task without description key",
+                "priority": "medium",
+                "tags": [],
+                "due_date": None,
+                "done": False,
+                "created_at": "2025-01-01T09:00:00",
+            }
+        ]
+        isolated_tasks_file.write_text(json.dumps(tasks), encoding="utf-8")
+        result = runner.invoke(cli, ["search", "without"])
+        assert result.exit_code == 0
+        assert "task without description key" in result.output

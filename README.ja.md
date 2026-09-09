@@ -78,6 +78,7 @@ Copilotは実装の速度を高めますが、何を作るべきか、変更を�
    python app.py add "コーヒーを買う" --priority low --tag personal
    python app.py list
    python app.py stats
+   python app.py search "デプロイ"
    ```
 
 4. GitHub Copilot Appを開き、Forkしたリポジトリを利用できる状態にします。
